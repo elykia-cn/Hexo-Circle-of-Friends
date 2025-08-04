@@ -10,6 +10,13 @@ members = [
 ]
 resolver = "2"
 
+[workspace.package]
+version = "6.0.3"
+edition = "2024"
+authors = ["Hexo Circle of Friends Team"]
+license = "Apache-2.0"
+repository = "https://github.com/Rock-Candy-Tea/hexo-circle-of-friends"
+
 [workspace.dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "macros"] }
 reqwest = { version = "0.12", default-features = false, features = [
@@ -33,6 +40,14 @@ url = "2.4"
 axum = "0.8"
 axum-extra = { version = "0.10.1", features = ["typed-header"] }
 dotenvy = "0.15"
+sha2 = "0.10"
+regex = "1.0"
+futures = "0.3"
+tokio-stream = "0.1"
+mongodb = "3"
+feed-rs = "2"
+nipper = "0.1.9"
+reqwest-retry = "0.7"
 # logging
 tracing = "0.1"
 tracing-appender = "0.2"
@@ -42,3 +57,4 @@ tracing-subscriber = { version = "0.3", features = [
     "chrono",
 ] }
 logroller = "0.1"
+rand = "0.8"

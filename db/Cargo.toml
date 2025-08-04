@@ -1,14 +1,17 @@
 [package]
 name = "db"
-version = "0.1.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
 sqlx.workspace = true
 data_structures = { path = "../data_structures" }
-mongodb = "3"
+mongodb.workspace = true
 tokio.workspace = true
-futures = "0.3"
+futures.workspace = true
 chrono.workspace=true

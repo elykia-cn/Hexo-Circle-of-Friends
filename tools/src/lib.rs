@@ -2,8 +2,9 @@ use chrono::{DateTime, Datelike, NaiveDate, NaiveDateTime, TimeZone};
 use data_structures::config;
 use logroller::{Compression, LogRollerBuilder, Rotation, RotationAge};
 pub use serde_yaml::Value;
+use sha2::{Digest, Sha256};
 use std::fs::File;
-use std::io::{self};
+use std::io::{self, BufReader};
 use tracing::info;
 use tracing_appender::non_blocking::WorkerGuard;
 use tracing_subscriber::{
@@ -238,6 +239,23 @@ pub fn get_env_var(var_name: &str) -> Result<String, Box<dyn std::error::Error>>
             "{var_name} is not set",
         )))),
     }
+}
+
+/// 解析JSON文件为SettingsFriendsLinksJsonMeta结构
+pub fn get_json_friends_links(
+    path: &str,
+) -> Result<config::SettingsFriendsLinksJsonMeta, Box<dyn std::error::Error>> {
+    let file = File::open(path)?;
+    let reader = BufReader::new(file);
+    let data: config::SettingsFriendsLinksJsonMeta = serde_json::from_reader(reader)?;
+    Ok(data)
+}
+
+/// 计算HTML内容的SHA256哈希值
+pub fn calculate_content_hash(html_content: &str) -> String {
+    let mut hasher = Sha256::new();
+    hasher.update(html_content.as_bytes());
+    format!("{:x}", hasher.finalize())
 }
 
 #[cfg(test)]
@@ -555,4 +573,341 @@ mod tests {
         assert!(strftime_to_string_ymd("2023-09-31").is_err());
         assert!(strftime_to_string_ymd("2023-11-31").is_err());
     }
+
+    #[test]
+    fn test_get_json_friends_links() {
+        use crate::config::SettingsFriendsLinksJsonMeta;
+
+        // 测试正常解析test_api.json文件
+        let result: Result<SettingsFriendsLinksJsonMeta, _> =
+            get_json_friends_links("../tests/test_api.json");
+        assert!(result.is_ok());
+
+        let data = result.unwrap();
+        assert_eq!(data.friends.len(), 2);
+
+        // 验证第一个朋友的数据
+        assert_eq!(data.friends[0].len(), 4);
+        assert_eq!(data.friends[0][0], "elizen");
+        assert_eq!(data.friends[0][1], "https://elizen.me/");
+        assert_eq!(
+            data.friends[0][2],
+            "https://akilar.top/images/headimage.png"
+        );
+        assert_eq!(data.friends[0][3], "hello.xml");
+
+        // 验证第二个朋友的数据
+        assert_eq!(data.friends[1].len(), 3);
+        assert_eq!(data.friends[1][0], "Akilarの糖果屋");
+        assert_eq!(data.friends[1][1], "https://akilar.top/");
+        assert_eq!(
+            data.friends[1][2],
+            "https://akilar.top/images/headimage.png"
+        );
+    }
+
+    #[test]
+    fn test_get_json_friends_links_structure() {
+        use crate::config::SettingsFriendsLinksJsonMeta;
+
+        // 测试函数返回正确的结构类型
+        let result: Result<SettingsFriendsLinksJsonMeta, _> =
+            get_json_friends_links("../tests/test_api.json");
+        assert!(result.is_ok());
+
+        let data = result.unwrap();
+        assert_eq!(data.friends.len(), 2);
+        assert_eq!(data.friends[0][0], "elizen");
+        assert_eq!(data.friends[1][0], "Akilarの糖果屋");
+
+        // 验证返回的确实是SettingsFriendsLinksJsonMeta类型
+        let _: SettingsFriendsLinksJsonMeta = data;
+    }
+
+    #[test]
+    fn test_get_json_file_not_found() {
+        use crate::config::SettingsFriendsLinksJsonMeta;
+
+        // 测试文件不存在的情况
+        let result: Result<SettingsFriendsLinksJsonMeta, _> =
+            get_json_friends_links("non_existent_file.json");
+        assert!(result.is_err());
+
+        // 验证错误类型
+        let error = result.unwrap_err();
+        assert!(
+            error.to_string().contains("No such file or directory")
+                || error.to_string().contains("cannot find the file")
+                || error.to_string().contains("系统找不到指定的文件")
+        );
+    }
+
+    #[test]
+    fn test_get_json_invalid_json() {
+        use crate::config::SettingsFriendsLinksJsonMeta;
+        use std::fs;
+        use std::io::Write;
+
+        // 创建一个临时的无效JSON文件
+        let temp_file = "temp_invalid.json";
+        let mut file = fs::File::create(temp_file).unwrap();
+        writeln!(file, "{{invalid json content").unwrap();
+
+        // 测试解析无效JSON
+        let result: Result<SettingsFriendsLinksJsonMeta, _> = get_json_friends_links(temp_file);
+        assert!(result.is_err());
+
+        // 验证错误消息包含JSON解析错误信息
+        let error = result.unwrap_err();
+        let error_msg = error.to_string();
+        assert!(
+            error_msg.contains("EOF")
+                || error_msg.contains("expected")
+                || error_msg.contains("invalid")
+                || error_msg.contains("parse")
+                || error_msg.contains("missing")
+                || error_msg.contains("unexpected")
+                || error_msg.contains("key must be a string")
+                || error_msg.contains("column")
+        );
+
+        // 清理临时文件
+        fs::remove_file(temp_file).unwrap();
+    }
+
+    #[test]
+    fn test_get_json_wrong_structure() {
+        use crate::config::SettingsFriendsLinksJsonMeta;
+        use std::fs;
+        use std::io::Write;
+
+        // 创建一个结构不匹配的JSON文件
+        let temp_file = "temp_wrong_structure.json";
+        let mut file = fs::File::create(temp_file).unwrap();
+        writeln!(file, r#"{{"wrong_field": "value"}}"#).unwrap();
+
+        // 测试解析结构不匹配的JSON
+        let result: Result<SettingsFriendsLinksJsonMeta, _> = get_json_friends_links(temp_file);
+        assert!(result.is_err());
+
+        // 验证错误消息
+        let error = result.unwrap_err();
+        let error_msg = error.to_string();
+        assert!(
+            error_msg.contains("missing field")
+                || error_msg.contains("friends")
+                || error_msg.contains("expected")
+        );
+
+        // 清理临时文件
+        fs::remove_file(temp_file).unwrap();
+    }
+
+    #[test]
+    fn test_get_json_empty_file() {
+        use crate::config::SettingsFriendsLinksJsonMeta;
+        use std::fs;
+
+        // 创建一个空文件
+        let temp_file = "temp_empty.json";
+        fs::File::create(temp_file).unwrap();
+
+        // 测试解析空文件
+        let result: Result<SettingsFriendsLinksJsonMeta, _> = get_json_friends_links(temp_file);
+        assert!(result.is_err());
+
+        // 验证错误消息
+        let error = result.unwrap_err();
+        assert!(error.to_string().contains("EOF") || error.to_string().contains("unexpected end"));
+
+        // 清理临时文件
+        fs::remove_file(temp_file).unwrap();
+    }
+
+    #[test]
+    fn test_get_json_complex_structure() {
+        use crate::config::SettingsFriendsLinksJsonMeta;
+        use std::fs;
+        use std::io::Write;
+
+        // 创建一个更复杂的JSON文件
+        let temp_file = "temp_complex.json";
+        let mut file = fs::File::create(temp_file).unwrap();
+        writeln!(
+            file,
+            r#"{{
+            "friends": [
+                ["name1", "https://example1.com", "avatar1.png"],
+                ["name2", "https://example2.com", "avatar2.png", "feed.xml"],
+                ["name3", "https://example3.com", "avatar3.png", "rss.xml", "extra_field"]
+            ]
+        }}"#
+        )
+        .unwrap();
+
+        // 测试解析复杂结构
+        let result: Result<SettingsFriendsLinksJsonMeta, _> = get_json_friends_links(temp_file);
+        assert!(result.is_ok());
+
+        let data = result.unwrap();
+        assert_eq!(data.friends.len(), 3);
+
+        // 验证数据内容
+        assert_eq!(data.friends[0].len(), 3);
+        assert_eq!(data.friends[1].len(), 4);
+        assert_eq!(data.friends[2].len(), 5);
+
+        assert_eq!(data.friends[0][0], "name1");
+        assert_eq!(data.friends[1][3], "feed.xml");
+        assert_eq!(data.friends[2][4], "extra_field");
+
+        // 清理临时文件
+        fs::remove_file(temp_file).unwrap();
+    }
+
+    #[test]
+    fn test_get_json_unicode_content() {
+        use crate::config::SettingsFriendsLinksJsonMeta;
+        use std::fs;
+        use std::io::Write;
+
+        // 创建包含Unicode字符的JSON文件
+        let temp_file = "temp_unicode.json";
+        let mut file = fs::File::create(temp_file).unwrap();
+        writeln!(
+            file,
+            r#"{{
+            "friends": [
+                ["用户名", "https://测试.com", "头像.png"],
+                ["🚀博客", "https://example.com", "😊.jpg"],
+                ["Español", "https://español.com", "niño.png"]
+            ]
+        }}"#
+        )
+        .unwrap();
+
+        // 测试解析包含Unicode的JSON
+        let result: Result<SettingsFriendsLinksJsonMeta, _> = get_json_friends_links(temp_file);
+        assert!(result.is_ok());
+
+        let data = result.unwrap();
+        assert_eq!(data.friends.len(), 3);
+
+        // 验证Unicode内容
+        assert_eq!(data.friends[0][0], "用户名");
+        assert_eq!(data.friends[0][1], "https://测试.com");
+        assert_eq!(data.friends[1][0], "🚀博客");
+        assert_eq!(data.friends[1][2], "😊.jpg");
+        assert_eq!(data.friends[2][0], "Español");
+
+        // 清理临时文件
+        fs::remove_file(temp_file).unwrap();
+    }
+
+    #[test]
+    fn test_calculate_content_hash() {
+        // 测试基本哈希计算
+        let content1 = "Hello, World!";
+        let hash1 = calculate_content_hash(content1);
+        assert_eq!(hash1.len(), 64); // SHA256哈希长度为64个十六进制字符
+
+        // 测试相同内容产生相同哈希
+        let content2 = "Hello, World!";
+        let hash2 = calculate_content_hash(content2);
+        assert_eq!(hash1, hash2);
+
+        // 测试不同内容产生不同哈希
+        let content3 = "Hello, Rust!";
+        let hash3 = calculate_content_hash(content3);
+        assert_ne!(hash1, hash3);
+
+        // 测试空字符串
+        let empty_content = "";
+        let empty_hash = calculate_content_hash(empty_content);
+        assert_eq!(empty_hash.len(), 64);
+        assert_eq!(
+            empty_hash,
+            "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        );
+
+        // 测试HTML内容
+        let html_content = r#"
+        <html>
+            <head><title>Test</title></head>
+            <body>
+                <h1>Hello World</h1>
+                <p>This is a test article.</p>
+            </body>
+        </html>
+        "#;
+        let html_hash = calculate_content_hash(html_content);
+        assert_eq!(html_hash.len(), 64);
+
+        // 测试中文内容
+        let chinese_content = "你好，世界！这是一个测试文章。";
+        let chinese_hash = calculate_content_hash(chinese_content);
+        assert_eq!(chinese_hash.len(), 64);
+
+        // 验证哈希格式（只包含十六进制字符）
+        assert!(hash1.chars().all(|c| c.is_ascii_hexdigit()));
+        assert!(html_hash.chars().all(|c| c.is_ascii_hexdigit()));
+        assert!(chinese_hash.chars().all(|c| c.is_ascii_hexdigit()));
+    }
+
+    #[test]
+    fn test_calculate_content_hash_stability() {
+        // 测试哈希计算的稳定性（多次计算同一内容应该得到相同结果）
+        let content = "Stable hash test content with special chars: !@#$%^&*()";
+        let hashes: Vec<String> = (0..10).map(|_| calculate_content_hash(content)).collect();
+
+        // 所有哈希都应该相同
+        let first_hash = &hashes[0];
+        for hash in &hashes {
+            assert_eq!(hash, first_hash);
+        }
+    }
+
+    #[test]
+    fn test_calculate_content_hash_sensitivity() {
+        // 测试哈希计算对微小变化的敏感性
+        let base_content = "This is a test content for hash sensitivity.";
+        let base_hash = calculate_content_hash(base_content);
+
+        // 添加一个空格
+        let space_content = "This is a test content for hash sensitivity. ";
+        let space_hash = calculate_content_hash(space_content);
+        assert_ne!(base_hash, space_hash);
+
+        // 改变大小写
+        let case_content = "This is a test content for hash Sensitivity.";
+        let case_hash = calculate_content_hash(case_content);
+        assert_ne!(base_hash, case_hash);
+
+        // 添加换行符
+        let newline_content = "This is a test content for hash sensitivity.\n";
+        let newline_hash = calculate_content_hash(newline_content);
+        assert_ne!(base_hash, newline_hash);
+    }
 }
+
+pub mod html_extractor;
+
+// 版本管理模块 - 整合自 version_manager.rs
+use data_structures::version::VersionResponse;
+use std::env;
+
+/// 获取当前版本信息
+///
+/// 从 workspace 的统一版本配置中获取版本号，
+/// 所有二进制文件（core、api）都使用相同的版本
+pub fn get_version() -> VersionResponse {
+    // 优先从编译时的包版本获取（来自 workspace 配置）
+    // 在编译时将版本号硬编码到二进制文件中
+    let version = env::var("VERSION") // 支持环境变量覆盖
+        .unwrap_or_else(|_| env!("CARGO_PKG_VERSION").to_string()); // 编译时版本
+
+    VersionResponse::new(version)
+}
+
+#[cfg(test)]
+mod config_test;

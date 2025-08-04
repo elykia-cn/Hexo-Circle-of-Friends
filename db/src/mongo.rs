@@ -1,5 +1,5 @@
 use chrono::{Duration, Local};
-use data_structures::metadata::{self, Friends, Posts};
+use data_structures::metadata::{self, ArticleSummary, Friends, Posts};
 use futures::TryStreamExt;
 use mongodb::{
     Client, Database as MongoDatabase,
@@ -98,6 +98,100 @@ pub async fn select_all_from_posts(
     Ok(posts)
 }
 
+/// 查询`posts`表的所有数据，并通过aggregation pipeline JOIN `ArticleSummaries`集合获取摘要信息
+///
+/// 当start==0并且end==0时，返回所有数据，
+/// 否则只查询`start-end`条数据，如果`start>end`，会报错
+pub async fn select_all_from_posts_with_summary(
+    pool: &MongoDatabase,
+    start: usize,
+    end: usize,
+    sort_rule: &str,
+) -> Result<Vec<metadata::PostsWithSummary>, Box<dyn std::error::Error>> {
+    let collection = pool.collection::<mongodb::bson::Document>("Posts");
+
+    // 构建聚合管道
+    let mut pipeline = vec![
+        // 1. 左连接 ArticleSummaries 集合
+        doc! {
+            "$lookup": {
+                "from": "ArticleSummaries",
+                "localField": "link",
+                "foreignField": "link",
+                "as": "summary_info"
+            }
+        },
+        // 2. 展开 summary_info 数组（如果存在）
+        doc! {
+            "$addFields": {
+                "summary_data": {
+                    "$arrayElemAt": ["$summary_info", 0]
+                }
+            }
+        },
+        // 3. 投影字段
+        doc! {
+            "$project": {
+                "title": 1,
+                "created": 1,
+                "updated": 1,
+                "link": 1,
+                "author": 1,
+                "avatar": 1,
+                "rule": 1,
+                "createdAt": 1,
+                "summary": { "$ifNull": ["$summary_data.summary", null] },
+                "ai_model": { "$ifNull": ["$summary_data.ai_model", null] },
+                "summary_created_at": { "$ifNull": ["$summary_data.createdAt", null] },
+                "summary_updated_at": { "$ifNull": ["$summary_data.updatedAt", null] }
+            }
+        },
+        // 4. 排序
+        doc! {
+            "$sort": { sort_rule: -1 }
+        },
+    ];
+
+    // 5. 如果需要分页，添加skip和limit
+    if start != 0 || end != 0 {
+        pipeline.push(doc! { "$skip": start as i64 });
+        pipeline.push(doc! { "$limit": (end - start) as i64 });
+    }
+
+    let mut cursor = collection.aggregate(pipeline).await?;
+    let mut posts_with_summary = Vec::new();
+
+    while let Some(doc) = cursor.try_next().await? {
+        // 手动构建 PostsWithSummary
+        let base_post = metadata::BasePosts::new(
+            doc.get_str("title").unwrap_or("").to_string(),
+            doc.get_str("created").unwrap_or("").to_string(),
+            doc.get_str("updated").unwrap_or("").to_string(),
+            doc.get_str("link").unwrap_or("").to_string(),
+            doc.get_str("rule").unwrap_or("").to_string(),
+        );
+
+        let post_with_summary = metadata::PostsWithSummary::new(
+            base_post,
+            doc.get_str("author").unwrap_or("").to_string(),
+            doc.get_str("avatar").unwrap_or("").to_string(),
+            doc.get_str("createdAt").unwrap_or("").to_string(),
+            doc.get_str("summary").ok().map(|s| s.to_string()),
+            doc.get_str("ai_model").ok().map(|s| s.to_string()),
+            doc.get_str("summary_created_at")
+                .ok()
+                .map(|s| s.to_string()),
+            doc.get_str("summary_updated_at")
+                .ok()
+                .map(|s| s.to_string()),
+        );
+
+        posts_with_summary.push(post_with_summary);
+    }
+
+    Ok(posts_with_summary)
+}
+
 /// 获取`posts`表中最近一次更新（`createdAt`最新）的时间
 pub async fn select_latest_time_from_posts(pool: &MongoDatabase) -> Result<String, Error> {
     let collection = pool.collection::<Posts>("Posts");
@@ -181,6 +275,64 @@ pub async fn delete_outdated_posts(days: usize, clientdb: &MongoDatabase) -> Res
     Ok(result.deleted_count as usize)
 }
 
+// Article Summary Operations
+
+pub async fn insert_article_summary(
+    summary: &ArticleSummary,
+    db: &MongoDatabase,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let collection = db.collection::<ArticleSummary>("ArticleSummaries");
+    let filter = doc! { "link": &summary.link };
+    let update = doc! {
+        "$set": {
+            "link": &summary.link,
+            "content_hash": &summary.content_hash,
+            "summary": &summary.summary,
+            "ai_model": &summary.ai_model,
+            "createdAt": &summary.created_at,
+            "updatedAt": &summary.updated_at,
+        }
+    };
+    let options = mongodb::options::UpdateOptions::builder()
+        .upsert(true)
+        .build();
+    collection
+        .update_one(filter, update)
+        .with_options(options)
+        .await?;
+    Ok(())
+}
+
+pub async fn select_article_summary_by_link(
+    link: &str,
+    db: &MongoDatabase,
+) -> Result<Option<ArticleSummary>, Box<dyn std::error::Error>> {
+    let collection = db.collection::<ArticleSummary>("ArticleSummaries");
+    let filter = doc! { "link": link };
+    let summary = collection.find_one(filter).await?;
+    Ok(summary)
+}
+
+pub async fn select_article_summary_by_hash(
+    content_hash: &str,
+    db: &MongoDatabase,
+) -> Result<Option<ArticleSummary>, Box<dyn std::error::Error>> {
+    let collection = db.collection::<ArticleSummary>("ArticleSummaries");
+    let filter = doc! { "content_hash": content_hash };
+    let summary = collection.find_one(filter).await?;
+    Ok(summary)
+}
+
+pub async fn delete_article_summary_by_link(
+    link: &str,
+    db: &MongoDatabase,
+) -> Result<(), Box<dyn std::error::Error>> {
+    let collection = db.collection::<ArticleSummary>("ArticleSummaries");
+    let filter = doc! { "link": link };
+    collection.delete_one(filter).await?;
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -197,6 +349,10 @@ mod tests {
         // 清空集合以确保测试环境干净
         let _ = db.collection::<Friends>("Friends").drop().await;
         let _ = db.collection::<Posts>("Posts").drop().await;
+        let _ = db
+            .collection::<ArticleSummary>("ArticleSummaries")
+            .drop()
+            .await;
 
         db
     }
@@ -863,5 +1019,159 @@ mod tests {
 
         // 应该没有剩余帖子
         assert_eq!(remaining_posts.len(), 0);
+    }
+
+    // 测试插入和查询文章摘要
+    #[tokio::test]
+    async fn test_insert_and_select_article_summary() {
+        let db = setup_test_db().await;
+
+        // 创建测试数据
+        let summary = ArticleSummary {
+            link: "https://example.com/test-article".to_string(),
+            content_hash: "abc123".to_string(),
+            summary: "这是一个测试摘要".to_string(),
+            ai_model: Some("test-model".to_string()),
+            created_at: "2023-01-01T00:00:00Z".to_string(),
+            updated_at: "2023-01-01T00:00:00Z".to_string(),
+        };
+
+        // 插入数据
+        insert_article_summary(&summary, &db).await.unwrap();
+
+        // 查询数据
+        let result = select_article_summary_by_link("https://example.com/test-article", &db)
+            .await
+            .unwrap();
+
+        // 验证结果
+        assert!(result.is_some());
+        let found_summary = result.unwrap();
+        assert_eq!(found_summary.link, "https://example.com/test-article");
+        assert_eq!(found_summary.content_hash, "abc123");
+        assert_eq!(found_summary.summary, "这是一个测试摘要");
+    }
+
+    // 测试更新文章摘要
+    #[tokio::test]
+    async fn test_update_article_summary() {
+        let db = setup_test_db().await;
+
+        // 插入原始数据
+        let original_summary = ArticleSummary {
+            link: "https://example.com/article".to_string(),
+            content_hash: "hash1".to_string(),
+            summary: "原始摘要".to_string(),
+            ai_model: Some("original-model".to_string()),
+            created_at: "2023-01-01T00:00:00Z".to_string(),
+            updated_at: "2023-01-01T00:00:00Z".to_string(),
+        };
+
+        insert_article_summary(&original_summary, &db)
+            .await
+            .unwrap();
+
+        // 更新数据（通过重新插入相同link的记录）
+        let updated_summary = ArticleSummary {
+            link: "https://example.com/article".to_string(),
+            content_hash: "hash2".to_string(),
+            summary: "更新后的摘要".to_string(),
+            ai_model: Some("updated-model".to_string()),
+            created_at: "2023-01-01T00:00:00Z".to_string(),
+            updated_at: "2023-01-02T00:00:00Z".to_string(),
+        };
+
+        insert_article_summary(&updated_summary, &db).await.unwrap();
+
+        // 查询更新后的数据
+        let result = select_article_summary_by_link("https://example.com/article", &db)
+            .await
+            .unwrap();
+
+        // 验证更新结果
+        assert!(result.is_some());
+        let found_summary = result.unwrap();
+        assert_eq!(found_summary.content_hash, "hash2");
+        assert_eq!(found_summary.summary, "更新后的摘要");
+        assert_eq!(found_summary.updated_at, "2023-01-02T00:00:00Z");
+    }
+
+    // 测试删除文章摘要
+    #[tokio::test]
+    async fn test_delete_article_summary() {
+        let db = setup_test_db().await;
+
+        // 插入测试数据
+        let summary = ArticleSummary {
+            link: "https://example.com/to-delete".to_string(),
+            content_hash: "delete_hash".to_string(),
+            summary: "要删除的摘要".to_string(),
+            ai_model: Some("delete-model".to_string()),
+            created_at: "2023-01-01T00:00:00Z".to_string(),
+            updated_at: "2023-01-01T00:00:00Z".to_string(),
+        };
+
+        insert_article_summary(&summary, &db).await.unwrap();
+
+        // 验证数据存在
+        let result = select_article_summary_by_link("https://example.com/to-delete", &db)
+            .await
+            .unwrap();
+        assert!(result.is_some());
+
+        // 删除数据
+        delete_article_summary_by_link("https://example.com/to-delete", &db)
+            .await
+            .unwrap();
+
+        // 验证数据已删除
+        let result = select_article_summary_by_link("https://example.com/to-delete", &db)
+            .await
+            .unwrap();
+        assert!(result.is_none());
+    }
+
+    // 测试查询不存在的文章摘要
+    #[tokio::test]
+    async fn test_select_nonexistent_article_summary() {
+        let db = setup_test_db().await;
+
+        // 查询不存在的链接
+        let result = select_article_summary_by_link("https://nonexistent.com", &db)
+            .await
+            .unwrap();
+
+        // 验证结果为空
+        assert!(result.is_none());
+    }
+
+    // 测试根据内容哈希查询文章摘要
+    #[tokio::test]
+    async fn test_select_article_summary_by_hash() {
+        let db = setup_test_db().await;
+
+        // 插入测试数据
+        let summary = ArticleSummary {
+            link: "https://example.com/hash-test".to_string(),
+            content_hash: "unique_hash_123".to_string(),
+            summary: "根据哈希查询的摘要".to_string(),
+            ai_model: Some("hash-test-model".to_string()),
+            created_at: "2023-01-01T00:00:00Z".to_string(),
+            updated_at: "2023-01-01T00:00:00Z".to_string(),
+        };
+
+        insert_article_summary(&summary, &db).await.unwrap();
+
+        // 根据内容哈希查询
+        let result = select_article_summary_by_hash("unique_hash_123", &db)
+            .await
+            .unwrap();
+
+        // 验证结果
+        assert!(result.is_some());
+        let found_summary = result.unwrap();
+        assert_eq!(found_summary.link, "https://example.com/hash-test");
+        assert_eq!(found_summary.content_hash, "unique_hash_123");
+        assert_eq!(found_summary.summary, "根据哈希查询的摘要");
     }
 }
