@@ -2,8 +2,8 @@
 # 参数说明：
 # link：必填，在这里填写你的友链页面地址
 # theme：必填，友链页的获取策略。需要指定该页面的主题，可选参数如下（这些是目前支持的主题）：
-#   - common1: 通用主题1，请参考：https://fcircle-doc.yyyzyyyz.cn/#/AdvancedGuide
-#   - common2: 通用主题2，请参考：https://fcircle-doc.yyyzyyyz.cn/#/AdvancedGuide
+#   - common1: 通用主题1，请参考：https://fcircle-doc.yyyzyyyz.cn/docs/advanced.html
+#   - common2: 通用主题2，请参考：https://fcircle-doc.yyyzyyyz.cn/docs/advanced.html
 #   - butterfly：butterfly主题
 #   - fluid：fluid主题
 #   - matery：matery主题
@@ -23,7 +23,7 @@ LINK: [
 
 # 配置项友链
 # enable：# 是否启用配置项友链 true/false（针对还未适配主题或者有定制需求的用户）
-# json_api_or_path：支持通过提供 json 格式的友链配置，可以是本地文件路径，或者是一个 url 地址。详见：https://fcircle-doc.yyyzyyyz.cn/#/settings
+# json_api_or_path：支持通过提供 json 格式的友链配置，可以是本地文件路径，或者是一个 url 地址。详见：https://fcircle-doc.yyyzyyyz.cn/docs/configuration.html
 # list字段填写格式：["name", "link", "avatar","suffix"]，其中：
 #       name：必填，友链的名字
 #       link：必填，友链主页地址
@@ -82,19 +82,20 @@ DATABASE: "sqlite"
 DEPLOY_TYPE: "github"
 
 # 文章摘要
-# 参考: https://fcircle-doc.yyyzyyyz.cn/#/settings
+# 参考: https://fcircle-doc.yyyzyyyz.cn/docs/configuration.html
 GENERATE_SUMMARY: {
-  enabled: false,
-  provider: "all",  # AI供应商，目前可选：gemini|siliconflow|all （使用 "all" 获得最佳可靠性）
-  
-  # 📝 可选：高级配置 (大部分情况下使用默认值即可)
-  # max_concurrent: 3,       # 最大并发数，默认3 (平衡速度与稳定性)
-  # wait_on_rate_limit: true, # 遇限速是否等待，默认true (提高成功率)
-  # max_chars: 8000,         # 最大字符数，默认8000 (适合大部分模型)
-  
+  enabled: false,   # 需要设置为true开启
+  provider: "all",  # AI供应商，目前可选：gemini|siliconflow|bigmodel|all （使用 "all" 依次全部尝试），需要配置对应提供商的api key
+  max_concurrent: 3,       # 最大并发数，默认3 (平衡速度与稳定性)
+  wait_on_rate_limit: true, # 遇限速是否等待，默认true (提高成功率)
+  max_chars: 8000,         # 最大字符数，默认8000 (适合大部分模型)
+  # google gemini：https://ai.google.dev/gemini-api/docs/models?hl=zh-cn
+  # 注意：国内访问需要添加代理
   gemini: {
     models: ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-2.5-flash-lite"]
   },
+  # 硅基流动（siliconflow）
+  # 以下列出的是其中的免费模型，你也可以去官方文档寻找并添加付费模型：https://cloud.siliconflow.cn/me/models
   siliconflow: {
     models: [
       "THUDM/GLM-4.1V-9B-Thinking",
@@ -108,6 +109,14 @@ GENERATE_SUMMARY: {
       "internlm/internlm2_5-7b-chat",
       "Qwen/Qwen2-7B-Instruct",
       "THUDM/glm-4-9b-chat"
+    ]
+  },
+  # 智谱（bigmodel）
+  # 以下列出的是其中的免费模型，你也可以去官方文档寻找并添加付费模型：https://docs.bigmodel.cn/cn/guide/models/text/glm-4.5
+  bigmodel: {
+    models: [
+      "glm-4.5-flash",
+      "glm-4-flash-250414"
     ]
   }
 }

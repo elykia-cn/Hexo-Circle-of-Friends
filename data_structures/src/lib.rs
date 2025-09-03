@@ -264,31 +264,30 @@ pub mod config {
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
     pub struct GenerateSummaryConfig {
         pub enabled: bool,
-        pub provider: String, // "gemini", "siliconflow", or "all"
+        pub provider: String, // "gemini", "siliconflow", "bigmodel", or "all"
+        pub max_concurrent: usize, // 默认: 3
+        pub wait_on_rate_limit: bool, // 默认: true
+        pub max_chars: usize, // 默认: 8000
 
-        // 🚀 简化配置：可选高级选项，大部分情况使用默认值
-        pub max_concurrent: Option<usize>,    // 默认: 3
-        pub wait_on_rate_limit: Option<bool>, // 默认: true
-        pub max_chars: Option<usize>,         // 默认: 8000
-
-        pub gemini: Option<GeminiConfig>,
-        pub siliconflow: Option<SiliconFlowConfig>,
+        pub gemini: Option<ModelConfig>,
+        pub siliconflow: Option<ModelConfig>,
+        pub bigmodel: Option<ModelConfig>,
     }
 
     impl GenerateSummaryConfig {
         /// 获取最大并发数，如果未配置则返回默认值
         pub fn get_max_concurrent(&self) -> usize {
-            self.max_concurrent.unwrap_or(3)
+            self.max_concurrent
         }
 
         /// 获取是否等待限速，如果未配置则返回默认值
         pub fn get_wait_on_rate_limit(&self) -> bool {
-            self.wait_on_rate_limit.unwrap_or(true)
+            self.wait_on_rate_limit
         }
 
         /// 获取最大字符数，如果未配置则返回默认值
         pub fn get_max_chars(&self) -> usize {
-            self.max_chars.unwrap_or(8000)
+            self.max_chars
         }
 
         /// 获取分块大小 (自动计算为 max_chars 的一半)
@@ -308,12 +307,7 @@ pub mod config {
     }
 
     #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-    pub struct GeminiConfig {
-        pub models: Vec<String>,
-    }
-
-    #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-    pub struct SiliconFlowConfig {
+    pub struct ModelConfig {
         pub models: Vec<String>,
     }
 
