@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Hexo-Circle-of-Friends</title>
+    <link rel="icon" href="./fcircle.png" type="image/png"> <!-- 添加 favicon -->
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            background-color: #f4f4f4;
+        }
+
+        .container {
+            max-width: 800px; /* 设置最大宽度 */
+            margin: 0 auto;   /* 居中对齐 */
+            padding: 20px;    /* 内边距 */
+            background-color: #fff; /* 背景色 */
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1); /* 阴影效果 */
+        }
+
+        h1 {
+            color: #333;
+            text-align: center;
+        }
+
+        h2 {
+            color: #007BFF;
+            border-bottom: 2px solid #007BFF;
+            padding-bottom: 5px;
+            margin-top: 30px;
+        }
+
+        h2 a {
+            text-decoration: none;
+            color: #007BFF;
+        }
+
+        p {
+            color: #555;
+            margin: 10px 0;
+        }
+
+        strong {
+            color: #333;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+            background-color: #fff;
+        }
+
+        th, td {
+            border: 1px solid #ddd;
+            padding: 10px;
+            text-align: left;
+        }
+
+        th {
+            background-color: #f2f2f2;
+            color: #333;
+        }
+
+        tr:nth-child(even) {
+            background-color: #f9f9f9;
+        }
+
+        tr:hover {
+            background-color: #f1f1f1;
+        }
+
+        code {
+            background-color: #f4f4f4;
+            padding: 2px 4px;
+            border-radius: 4px;
+        }
+
+        .docs-links {
+            text-align: center;
+            margin: 15px 0 25px 0;
+        }
+
+        .docs-links a {
+            display: inline-block;
+            margin: 0 8px;
+            padding: 6px 14px;
+            border-radius: 5px;
+            color: #fff;
+            text-decoration: none;
+            font-size: 14px;
+            background: #007BFF;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.12);
+            transition: background 0.3s ease;
+        }
+
+        .docs-links a:hover {
+            background: #0056b3;
+        }
+
+        @media (max-width: 600px) {
+            body {
+                padding: 10px;
+            }
+
+            table {
+                font-size: 14px;
+            }
+
+            .docs-links a {
+                font-size: 13px;
+                padding: 5px 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h1>Hexo-Circle-of-Friends</h1>
+
+    <!-- 新增 docs / redoc 链接 -->
+    <div class="docs-links">
+        <a href="https://friends.elykia.cn/docs" target="_blank">Swagger Docs</a>
+        <a href="https://friends.elykia.cn/redoc" target="_blank">ReDoc Docs</a>
+    </div>
+
+    <h2><a href="https://friends.elykia.cn/all">/all</a></h2>
+    <p><strong>描述：</strong>获取数据库中的统计信息和文章信息列表。支持分页（start、end）和排序（rule），可用于前端展示朋友圈完整数据。</p>
+    <p><strong>请求方式：</strong>GET</p>
+    <p><strong>请求参数说明：</strong></p>
+    <table>
+        <thead>
+            <tr>
+                <th>参数名</th>
+                <th>类型</th>
+                <th>位置</th>
+                <th>默认值</th>
+                <th>说明</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>start</td>
+                <td>integer</td>
+                <td>query</td>
+                <td>0</td>
+                <td>起始位置（从 0 开始计数）。</td>
+            </tr>
+            <tr>
+                <td>end</td>
+                <td>integer</td>
+                <td>query</td>
+                <td>-1</td>
+                <td>结束位置，-1 表示不限制（返回全部）。</td>
+            </tr>
+            <tr>
+                <td>rule</td>
+                <td>string</td>
+                <td>query</td>
+                <td>updated</td>
+                <td>排序规则，可选：created（按创建时间）/ updated（按更新时间）。</td>
+            </tr>
+        </tbody>
+    </table>
+    <p><strong>注意：</strong>start ≥ 0；rule 仅允许 created 或 updated，否则返回 400 错误。</p>
+
+    <h2><a href="https://friends.elykia.cn/friend">/friend</a></h2>
+    <p><strong>描述：</strong>从数据库中获取所有友链信息，返回包含名称、链接和头像的完整列表。</p>
+    <p><strong>请求方式：</strong>GET</p>
+    <p><strong>请求参数说明：</strong>无参数。</p>
+
+    <h2><a href="https://friends.elykia.cn/randomfriend">/randomfriend</a></h2>
+    <p><strong>描述：</strong>从数据库中随机返回指定数量的友链信息，支持批量返回。</p>
+    <p><strong>请求方式：</strong>GET</p>
+    <p><strong>请求参数说明：</strong></p>
+    <table>
+        <thead>
+            <tr>
+                <th>参数名</th>
+                <th>类型</th>
+                <th>位置</th>
+                <th>必填</th>
+                <th>说明</th>
+                <th>默认值</th>
+                <th>最小值</th>
+                <th>最大值</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>num</td>
+                <td>integer</td>
+                <td>query</td>
+                <td>否</td>
+                <td>返回的友链数量</td>
+                <td>1</td>
+                <td>1</td>
+                <td>100</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2><a href="https://friends.elykia.cn/randompost">/randompost</a></h2>
+    <p><strong>描述：</strong>从文章库中随机返回指定数量的文章信息，可用于友链朋友圈的「随机文章推荐」。</p>
+    <p><strong>请求方式：</strong>GET</p>
+    <p><strong>请求参数说明：</strong></p>
+    <table>
+        <thead>
+            <tr>
+                <th>参数名</th>
+                <th>类型</th>
+                <th>位置</th>
+                <th>必填</th>
+                <th>说明</th>
+                <th>默认值</th>
+                <th>最小值</th>
+                <th>最大值</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>num</td>
+                <td>integer</td>
+                <td>query</td>
+                <td>否</td>
+                <td>返回的文章数量</td>
+                <td>1</td>
+                <td>1</td>
+                <td>100</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2><a href="https://friends.elykia.cn/version">/version</a></h2>
+    <p><strong>描述：</strong>返回当前 API 服务的版本号。</p>
+    <p><strong>请求方式：</strong>GET</p>
+    <p><strong>请求参数说明：</strong>无参数。</p>
+
+    <h2><a href="https://friends.elykia.cn/post">/post</a></h2>
+    <p><strong>描述：</strong>根据朋友链接获取该朋友的所有文章，支持随机朋友或指定朋友，并可按时间规则排序。</p>
+    <p><strong>请求方式：</strong>GET</p>
+    <p><strong>请求参数说明：</strong></p>
+    <table>
+        <thead>
+            <tr>
+                <th>参数名</th>
+                <th>类型</th>
+                <th>位置</th>
+                <th>必填</th>
+                <th>说明</th>
+                <th>默认值</th>
+                <th>取值范围</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>link</td>
+                <td>string</td>
+                <td>query</td>
+                <td>否</td>
+                <td>朋友链接地址，为空时随机选择</td>
+                <td>null</td>
+                <td>合法的 URL 或空</td>
+            </tr>
+            <tr>
+                <td>num</td>
+                <td>integer</td>
+                <td>query</td>
+                <td>否</td>
+                <td>返回文章数量，-1 表示全部</td>
+                <td>-1</td>
+                <td>-1 或 1 ~ ∞</td>
+            </tr>
+            <tr>
+                <td>rule</td>
+                <td>string</td>
+                <td>query</td>
+                <td>否</td>
+                <td>排序规则</td>
+                <td>created</td>
+                <td>created 或 updated</td>
+            </tr>
+        </tbody>
+    </table>
+
+    <h2><a href="https://friends.elykia.cn/summary">/summary</a></h2>
+    <p><strong>描述：</strong>根据文章链接获取由 AI 生成的文章摘要信息。</p>
+    <p><strong>请求方式：</strong>GET</p>
+    <p><strong>请求参数说明：</strong></p>
+    <table>
+        <thead>
+            <tr>
+                <th>参数名</th>
+                <th>类型</th>
+                <th>位置</th>
+                <th>必填</th>
+                <th>说明</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td>link</td>
+                <td>string</td>
+                <td>query</td>
+                <td>是</td>
+                <td>文章链接地址</td>
+            </tr>
+        </tbody>
+    </table>
+</div>
+
+</body>
+</html>
