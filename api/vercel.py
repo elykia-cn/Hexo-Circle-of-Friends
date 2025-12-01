@@ -235,6 +235,15 @@ app.add_middleware(
 
 
 @app.get(
+    "/", 
+    tags=["PUBLIC_API"], 
+    summary="返回 API 文档首页")
+async def read_index():
+    """返回 index.html 内容
+    """
+    return FileResponse("index.html") 
+
+@app.get(
     "/all",
     tags=["PUBLIC_API"],
     summary="返回完整统计信息",
